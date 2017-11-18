@@ -79,10 +79,10 @@ int main(int argc, char* argv[]){
 						close(sd);
 						client_socket[i]=0;
 					}
-				}
-				else{
+					else{
 					buffer[num]='\0';
 					send(sd,buffer,strlen(buffer),0);
+					}
 				}
 			}
 		}
