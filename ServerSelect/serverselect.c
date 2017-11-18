@@ -11,6 +11,7 @@ int main(int argc, char* argv[]){
 	int master_socket=socket(AF_INET,SOCK_STREAM,0);
 	if (master_socket==0){
 		 printf("ERROR in socket() %s\n", strerror(errno));
+		 return 0;
 	}
 	
 	int client_socket[30];
@@ -25,10 +26,12 @@ int main(int argc, char* argv[]){
 	
 	if (bind(master_socket,(struct sockaddr *) &addr,sizeof(addr))<0){
 		printf("ERROR in bind() %s\n", strerror(errno));
+		return 0;
 	}
 	
 	if (listen(master_socket,5)<0){
 		printf("ERROR in listen() %s\n", strerror(errno));
+		return 0;
 	}
 	
 	fd_set readfds;	
@@ -53,12 +56,14 @@ int main(int argc, char* argv[]){
 		act=select(max_sd+1,&readfds,NULL,NULL,NULL);
 		if ((act<0)&(errno!=EINTR)){
 			printf("ERROR in select() %s\n", strerror(errno));
+			return 0;
 		}
 		
 		if (FD_ISSET(master_socket,&readfds)){
 			new_socket=accept(master_socket,(struct sockaddr *)&addr,(socklen_t*) &addrlen);
 			if (new_socket<0){
 				printf("ERROR in accept() %s\n", strerror(errno));
+				return 0;
 			}
 			printf("New connection is connected\n");
 			for (int i=0;i<30;i++){
