@@ -9,25 +9,30 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 
-void setnonblocking(int sock){
-	int opts = fcntl(sock, F_GETFL);
-	if (opts <0){
-		printf("ERROR in GETFL() %s\n", strerror(errno));
-		exit(0);
-	}
-	opts = opts | O_NONBLOCK;
-	if (fcntl(sock, F_SETFL, opts)<0){
-		printf("ERROR in SETFL() %s\n", strerror(errno));
-		exit(0);
-	}
+static int make_socket_non_blocking (int sfd){
+  int flags, s;
+
+  flags = fcntl (sfd, F_GETFL, 0);
+  if (flags == -1)
+    {
+      perror ("fcntl");
+      return -1;
+    }
+
+  flags |= O_NONBLOCK;
+  s = fcntl (sfd, F_SETFL, flags);
+  if (s == -1)
+    {
+      perror ("fcntl");
+      return -1;
+    }
+
+  return 0;
 }
 
 int main(){
+	int s;
 	char buffer[1025];	
-	int client_socket[30];
-	for (int i=0;i<30;i++){
-		client_socket[i]=0;
-	}
 	
 	int master_socket=socket(AF_INET,SOCK_STREAM,0);
 	if (master_socket==0){
@@ -65,8 +70,6 @@ int main(){
 	}
 	
 	int nfds;
-	int conn_sock;
-	int addrlen=sizeof(addr);
 	int sd;
 	while (1){
 		nfds = epoll_wait(epollfd,events,30,-1);
@@ -75,46 +78,68 @@ int main(){
 			return 0;
 		}
 		for (int i=0;i<nfds;i++){
-			if (events[i].data.fd = master_socket){
-				conn_sock= accept(master_socket,(struct sockaddr *) &addr,(socklen_t*)  &addrlen);
-				if (conn_sock==-1){
-					printf("ERROR in accept() %s\n", strerror(errno));
-					return 0;
-				}
-				printf("New connection is connected\n");
-				setnonblocking(conn_sock);
-				ev.events =  EPOLLIN | EPOLLET;
-				ev.data.fd = conn_sock;
-				if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) ==-1){
-					printf("ERROR in epoll_ctl() %s\n", strerror(errno));
-					return 0;
-				}
-				for (int i=0;i<30;i++){
-					if (client_socket[i]==0){
-						client_socket[i]=conn_sock;
-						break;
-					}
-				}
+			if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN))){
+				printf("ERROR in epoll error %s\n", strerror(errno));
+				close(events[i].data.fd);
+				continue;
 			}
 			else {
-				int num;
-				for (int i=0;i<30;i++){
-					sd = client_socket[i];
-					if (events[i].events & EPOLLIN){
-						num=read(sd,buffer,1024);
-						if (num==0){
-							printf("Host disconnected\n");
-							close(sd);
-							client_socket[i]=0;
+				if (events[i].data.fd == master_socket){
+					struct sockaddr in_addr;
+					int conn_sock;
+					socklen_t in_len=sizeof(in_addr);
+					conn_sock= accept(master_socket,(struct sockaddr *) &in_addr,(socklen_t*)  &in_len);
+					if (conn_sock==-1){
+						if ((errno ==EAGAIN) || (errno == EWOULDBLOCK)){
+								break;
+						}
+						else {
+							printf("ERROR in accept() %s\n", strerror(errno));
+							break;
+						}
+					}
+					printf("New connection is connected\n");
+					s=make_socket_non_blocking(conn_sock);
+					if (s==-1) abort();
+					ev.data.fd=conn_sock;
+					ev.events =  EPOLLIN | EPOLLET;
+					ev.data.fd = conn_sock;
+					if (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock, &ev) ==-1){
+						printf("ERROR in epoll_ctl() %s\n", strerror(errno));
+						return 0;
+					}
+					continue;
+				}
+				else{
+					int done =0;
+					while (1){
+						sd = events[i].data.fd;
+						int num=read(sd,buffer,1024);
+						if (num ==-1){
+							if (errno != EAGAIN){
+								perror("read");
+								done =1;
+							}
+							break;
 						}
 						else{
-							buffer[num]='\0';
-							send(sd,buffer,strlen(buffer),0);
+							if (num==0){
+								done =1;
+								break;
+							}
 						}
+						buffer[num]='\0';
+						send(sd,buffer,strlen(buffer),0);
+					}
+					if (done){
+						printf("Host disconnected\n");
+						close(sd);
 					}
 				}
 			}
 		}	
 	}
+	free(events);
+	close(nfds);
 	return 1;
 }
