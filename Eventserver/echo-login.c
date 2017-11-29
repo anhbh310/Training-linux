@@ -105,7 +105,7 @@ int main(int argc, char **argv){
 
     memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(9999);
+    sin.sin_port = htons(9090);
     sin.sin_addr.s_addr = INADDR_ANY; 
 
     ctx = evssl_init();
